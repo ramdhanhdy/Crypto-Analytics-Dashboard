@@ -1,4 +1,3 @@
-
 ---
 
 # Crypto Analytics Dashboard
@@ -48,7 +47,7 @@
 
 ## Demo
 
-[![Watch the video](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/master/assets/dashboard-demo.png)](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/master/assets/Crypto%%Dashboard.mp4)
+[![Watch the video](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/master/assets/dashboard-demo.png)](https://firebasestorage.googleapis.com/v0/b/firescript-577a2.appspot.com/o/imgs%2Fapp%2FLearn_Data_Science%2FUKVN4hl83a.mp4?alt=media&token=5c444d90-f7d2-4b50-a72d-ea667400343e)
 
 ---
 
