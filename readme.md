@@ -1,5 +1,7 @@
 # Crypto Analytics Dashboard
 
+![Image](https://github.com/user-attachments/assets/b3e77ec0-ec57-4114-b893-3d5bbd61b714)
+
 **Crypto Analytics Dashboard** is a Streamlit application that provides real-time analysis of cryptocurrency markets using **alpha-beta** calculations against benchmarks like **BTC** and **BTCDOM**. It includes rolling alpha-beta distributions, performance metrics (Sharpe, Sortino, etc.), and dynamic visualizations to help traders or analysts better understand the relative performance and risk characteristics of various crypto assets.
 
 ## Table of Contents
@@ -40,12 +42,6 @@
 5. **User-Friendly UI**  
    - Intuitive sidebar controls for configuring date range, rolling window size, and advanced settings.  
    - Enhanced styling using custom CSS for a polished look (dark theme, gradient tabs, hover effects).
-
----
-
-## Demo
-
-![Image](https://github.com/user-attachments/assets/b3e77ec0-ec57-4114-b893-3d5bbd61b714)
 
 
 ---
