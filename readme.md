@@ -48,7 +48,7 @@
 
 ## Demo
 
-[![Watch the video](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/branch/assets/dashboard-demo.png)](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/branch/assets/Crypto%%Dashboard.mp4)
+[![Watch the video](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/master/assets/dashboard-demo.png)](https://raw.githubusercontent.com/ramdhanhdy/CryptoDashboard/master/assets/Crypto%%Dashboard.mp4)
 
 ---
 
