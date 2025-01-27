@@ -1,0 +1,22 @@
+# Config files
+config.json
+*.env
+
+# Cache
+market_data_cache/
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# Virtual environment
+venv/
+env/
+
+# Logs
+*.log
+
+run_app.sh
+run_app.bat
