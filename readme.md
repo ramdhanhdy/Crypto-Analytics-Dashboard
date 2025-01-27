@@ -45,7 +45,7 @@
 
 ## Demo
 
-[![Watch the video](https://github.com/ramdhanhdy/Crypto-Analytics-Dashboard/blob/master/assets/dashboard-demo.png?raw=true)](https://github.com/ramdhanhdy/Crypto-Analytics-Dashboard/raw/refs/heads/master/assets/Crypto%20Dashboard.mp4)
+![Image](https://github.com/user-attachments/assets/b3e77ec0-ec57-4114-b893-3d5bbd61b714)
 
 
 ---
