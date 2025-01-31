@@ -293,32 +293,6 @@ def render_sidebar():
                 help="Analysis time window"
             )
             
-            st.caption("Advanced Parameters:")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                confidence_level = st.selectbox(
-                    "Confidence Level",
-                    ["90%", "95%", "99%"],
-                    index=1
-                )
-            with col_b:
-                smoothing = st.selectbox(
-                    "Smoothing",
-                    ["None", "Low", "Medium", "High"],
-                    index=1
-                )
-    
-    with tab_presets:
-        st.radio(
-            "Quick Presets",
-            options=["Balanced", "Short-Term", "Deep Analysis"],
-            horizontal=True,
-            help="Preconfigured analysis profiles"
-        )
-        st.markdown("---")
-        st.button("💾 Save Current Setup", help="Store custom configuration")
-        st.button("📥 Load Previous", help="Restore saved settings")
-    
     return days_to_fetch, hours_to_analyze
 
 # ====================
