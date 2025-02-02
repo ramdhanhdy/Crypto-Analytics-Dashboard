@@ -1,10 +1,25 @@
 import pandas as pd
 import numpy as np
 from market_data_manager import MarketDataManager
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
 
 class AlphaBetaCalculator:
     def __init__(self, market_data_manager):
         self.mdm = market_data_manager
+        self._setup_logging()
+
+    def _setup_logging(self):
+        """Initialize logger for this class"""
+        self.logger = logging.getLogger(__name__)
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
 
     def calculate_alpha_beta(self, symbols=None, interval='5m', min_days=15):
         """
@@ -182,72 +197,181 @@ class AlphaBetaCalculator:
     def calculate_performance_metrics(self, window=4320, symbols=None, interval='5m', min_days=15,
                                       risk_free_rate=0.0, progress_callback=None):
         """
-        Calculate performance metrics (Sharpe, Sortino, Max Drawdown, Volatility, Return) using rolling windows.
+        Calculate performance metrics using vectorized operations and parallel processing.
+        
+        Parameters:
+        -----------
+        window : int
+            Rolling window size
+        symbols : list, optional
+            List of symbols to analyze
+        interval : str
+            Time interval for data
+        min_days : int
+            Minimum days of data required
+        risk_free_rate : float
+            Risk-free rate for Sharpe ratio calculation
+        progress_callback : callable, optional
+            Callback function for progress updates
         """
         data = self.mdm.get_cached_data(symbols=symbols, interval=interval, min_days=min_days)
         if data is None:
-            print("No data available.")
+            self.logger.error("No data available")
             return None
-        
-        if not isinstance(data.columns, pd.MultiIndex):
-            print("Data structure is not correct.")
-            return None
-        
+
         all_symbols = data.columns.get_level_values(0).unique()
         exclude_symbols = ['BTCUSDT', 'ETHBTC', 'BTCDOMUSDT']
         symbols = [sym for sym in all_symbols if sym not in exclude_symbols]
         total_symbols = len(symbols)
 
-        metric_dfs = {
-            'sharpe': {},
-            'sortino': {},
-            'max_drawdown': {},
-            'volatility': {},
-            'return': {}
-        }
-
-        for idx, symbol in enumerate(symbols):
+        def calculate_symbol_metrics(symbol):
+            """Calculate all metrics for a single symbol using vectorized operations"""
             try:
-                sym_data = data[symbol]['close']
-                returns = sym_data.pct_change().fillna(0)
-
+                # Get price data and calculate returns once
+                prices = data[symbol]['close']
+                returns = prices.pct_change().fillna(0)
+                
+                # Calculate rolling returns and volatility once
                 rolling_returns = returns.rolling(window=window).sum()
                 rolling_vol = returns.rolling(window=window).std() * np.sqrt(window)
-
+                
+                # Efficient downside volatility calculation
                 downside_returns = returns.copy()
                 downside_returns[downside_returns > 0] = 0
                 rolling_downside_vol = downside_returns.rolling(window=window).std() * np.sqrt(window)
-
-                rolling_sharpe = rolling_returns / rolling_vol
-                rolling_sortino = rolling_returns / rolling_downside_vol
-
-                # Rolling max drawdown
-                rolling_cum_returns = (1 + returns).rolling(window=window).apply(lambda x: np.prod(1 + x) - 1)
-                # Expand is for the entire series, but we only want rolling window
-                # We can track max within that rolling window:
-                # For better clarity: We can compute within the rolling apply or a short approach is:
-                # We'll do it simply with a second rolling:
-                # Note: This part can be done in various ways. We'll keep your logic for now.
-                expanding_max = rolling_cum_returns.expanding().max()
-                rolling_drawdown = (rolling_cum_returns - expanding_max) / expanding_max
-
-                metric_dfs['sharpe'][symbol] = rolling_sharpe
-                metric_dfs['sortino'][symbol] = rolling_sortino
-                metric_dfs['max_drawdown'][symbol] = rolling_drawdown
-                metric_dfs['volatility'][symbol] = rolling_vol
-                metric_dfs['return'][symbol] = rolling_returns
-
-                if progress_callback:
-                    progress_callback((idx + 1) / total_symbols)
-
+                
+                # Efficient drawdown calculation using vectorized operations
+                rolling_cum_returns = (1 + returns).rolling(window=window).apply(
+                    lambda x: np.prod(1 + x) - 1,
+                    raw=True
+                )
+                rolling_cum_max = rolling_cum_returns.expanding().max()
+                rolling_drawdown = (rolling_cum_returns - rolling_cum_max) / rolling_cum_max
+                
+                # Calculate Sharpe and Sortino ratios
+                excess_returns = rolling_returns - risk_free_rate
+                rolling_sharpe = np.where(rolling_vol != 0, excess_returns / rolling_vol, 0)
+                rolling_sortino = np.where(
+                    rolling_downside_vol != 0,
+                    excess_returns / rolling_downside_vol,
+                    0
+                )
+                
+                return {
+                    'sharpe': pd.Series(rolling_sharpe, index=prices.index),
+                    'sortino': pd.Series(rolling_sortino, index=prices.index),
+                    'max_drawdown': rolling_drawdown,
+                    'volatility': rolling_vol,
+                    'return': rolling_returns
+                }
+                
             except Exception as e:
-                print(f"Error calculating metrics for {symbol}: {e}")
-                continue
+                self.logger.error(f"Error calculating metrics for {symbol}: {e}")
+                return None
 
+        # Process symbols in parallel
+        metrics_dict = {'sharpe': {}, 'sortino': {}, 'max_drawdown': {}, 'volatility': {}, 'return': {}}
+        processed = 0
+        
+        with ThreadPoolExecutor(max_workers=min(10, total_symbols)) as executor:
+            future_to_symbol = {
+                executor.submit(calculate_symbol_metrics, symbol): symbol 
+                for symbol in symbols
+            }
+            
+            for future in as_completed(future_to_symbol):
+                symbol = future_to_symbol[future]
+                try:
+                    metrics = future.result()
+                    if metrics:
+                        for metric, values in metrics.items():
+                            metrics_dict[metric][symbol] = values
+                    
+                    processed += 1
+                    if progress_callback:
+                        progress_callback(processed / total_symbols)
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing {symbol}: {e}")
+        
+        # Combine results
         result = {}
-        for metric in metric_dfs:
-            df_metric = pd.concat(metric_dfs[metric], axis=1)
-            df_metric = df_metric.replace([np.inf, -np.inf], np.nan).fillna(0)
-            result[metric] = df_metric
-
+        for metric in metrics_dict:
+            if metrics_dict[metric]:
+                df_metric = pd.concat(metrics_dict[metric], axis=1)
+                df_metric = df_metric.replace([np.inf, -np.inf], np.nan).fillna(0)
+                result[metric] = df_metric
+        
         return result
+
+    def detect_market_regimes(self, symbol: str, lookback: int, timeframe: str) -> pd.DataFrame:
+        """
+        Detect market regimes across multiple timeframes using existing 5m data
+        
+        Parameters:
+        -----------
+        symbol : str
+            Trading pair symbol (e.g., 'BTCUSDT')
+        lookback : int
+            Number of periods to analyze
+        timeframe : str
+            Timeframe for analysis ('5m', '15m', '1H', '4H', '1D')
+            
+        Returns:
+        --------
+        pd.DataFrame
+            DataFrame containing regime analysis results
+        """
+        try:
+            data = self.mdm.get_cached_data()
+            if data is None or symbol not in data.columns.get_level_values('symbol'):
+                self.logger.error(f"No data available for {symbol}")
+                return None
+
+            # Get price data and resample to desired timeframe
+            prices = data[symbol]['close']
+            
+            # Convert timeframe to pandas offset string
+            offset_map = {
+                '5m': '5T',
+                '15m': '15T',
+                '1H': '1H',
+                '4H': '4H',
+                '1D': '1D'
+            }
+            offset = offset_map.get(timeframe)
+            if not offset:
+                self.logger.error(f"Invalid timeframe: {timeframe}")
+                return None
+            
+            # Resample data
+            resampled = pd.DataFrame()
+            resampled['price'] = prices.resample(offset).last()
+            resampled['returns'] = np.log(resampled['price']).diff()
+            resampled['volatility'] = resampled['returns'].rolling(20).std() * np.sqrt(252)
+            
+            # Take the last n periods based on lookback
+            resampled = resampled.tail(lookback)
+            
+            # Simple regime classification based on volatility and returns
+            vol_threshold = resampled['volatility'].mean() + resampled['volatility'].std()
+            ret_threshold = resampled['returns'].mean()
+            
+            def classify_regime(row):
+                if row['volatility'] > vol_threshold:
+                    return 'High Volatility'
+                elif row['returns'] > ret_threshold:
+                    return 'Bull Market'
+                else:
+                    return 'Bear Market'
+            
+            resampled['regime_label'] = resampled.apply(classify_regime, axis=1)
+            
+            # Add timeframe info
+            resampled['timeframe'] = timeframe
+            
+            return resampled
+            
+        except Exception as e:
+            self.logger.error(f"Error detecting market regimes: {e}")
+            return None

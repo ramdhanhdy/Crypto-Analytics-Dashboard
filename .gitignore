@@ -20,3 +20,5 @@ env/
 
 run_app.sh
 run_app.bat
+.aider*
+.env

@@ -4,18 +4,30 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+from typing import Optional, Dict, List
 
 class MarketDataManager:
-    def __init__(self, base_interval='5m', cache_dir='market_data_cache'):
+    def __init__(self, base_interval='5m', cache_dir='market_data_cache', max_workers=5):
         self.crypto_data = CryptoPriceData(config_path='config.json')
         self.cache_dir = cache_dir
         self.base_interval = base_interval
         self.cached_data = {}  # Store data by interval
         self.last_fetch_time = {}  # Track last fetch time by interval
+        self.max_workers = max_workers
+        self._setup_logging()
         
         # Create cache directory if it doesn't exist
         if not os.path.exists(cache_dir):
             os.makedirs(cache_dir)
+    
+    def _setup_logging(self):
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
     
     def _get_cache_filename(self, interval, symbol=None):
         """Generate cache filename for either combined data or individual symbol data"""
@@ -66,39 +78,58 @@ class MarketDataManager:
         except Exception as e:
             print(f"Error saving data: {e}")
 
-    def initial_data_fetch(self, symbols=None, interval='5m', days=3):
-        """Perform initial data fetch and save to cache"""
-        if symbols is None:
-            symbols = self.crypto_data.get_all_perpetual_symbols()
-            print(f"Found {len(symbols)} symbols")
-
-        all_data = {}
-        
-        for symbol in symbols:
+    def _fetch_symbol_data(self, symbol: str, interval: str, days: int) -> Optional[pd.DataFrame]:
+        """Fetch data for a single symbol with retries"""
+        max_retries = 3
+        for attempt in range(max_retries):
             try:
-                print(f"Fetching initial data for {symbol}...")
                 df = self.crypto_data.get_historical_perpetual_data(
                     symbols=[symbol],
                     interval=interval,
                     start_str=f"{days} days ago UTC"
                 )
-                
                 if df is not None:
                     df = df[['close']]
-                    all_data[symbol] = df
-                    print(f"Successfully fetched data for {symbol}")
-                
-                time.sleep(0.1)
-                
+                    self.logger.info(f"Successfully fetched data for {symbol}")
+                    return df
             except Exception as e:
-                print(f"Error fetching {symbol}: {e}")
+                self.logger.warning(f"Attempt {attempt + 1} failed for {symbol}: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(1 * (attempt + 1))  # Exponential backoff
                 continue
+        self.logger.error(f"Failed to fetch data for {symbol} after {max_retries} attempts")
+        return None
+
+    def initial_data_fetch(self, symbols=None, interval='5m', days=3) -> Optional[pd.DataFrame]:
+        """Perform initial data fetch in parallel with improved error handling"""
+        if symbols is None:
+            symbols = self.crypto_data.get_all_perpetual_symbols()
+            self.logger.info(f"Found {len(symbols)} symbols")
+
+        all_data: Dict[str, pd.DataFrame] = {}
+        
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all fetch tasks
+            future_to_symbol = {
+                executor.submit(self._fetch_symbol_data, symbol, interval, days): symbol 
+                for symbol in symbols
+            }
+            
+            # Process completed tasks
+            for future in as_completed(future_to_symbol):
+                symbol = future_to_symbol[future]
+                try:
+                    df = future.result()
+                    if df is not None:
+                        all_data[symbol] = df
+                except Exception as e:
+                    self.logger.error(f"Error processing {symbol}: {e}")
         
         if all_data:
             combined_df = pd.concat(
                 {symbol: df for symbol, df in all_data.items()},
                 axis=1,
-                names=['symbol', 'field']  # Explicitly name the levels
+                names=['symbol', 'field']
             )
             self.cached_data = combined_df
             return combined_df
@@ -206,3 +237,9 @@ class MarketDataManager:
         
         print("No cached data available. Please initialize data first.")
         return None
+
+    def get_cached_symbols(self):
+        """Get list of symbols in cached data"""
+        if self.cached_data is not None:
+            return self.cached_data.columns.get_level_values('symbol').unique().tolist()
+        return []

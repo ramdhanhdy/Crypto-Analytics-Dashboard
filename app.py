@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import time
+from datetime import datetime, timedelta
 
 from alpha_beta_calculator import AlphaBetaCalculator
 from market_data_manager import MarketDataManager
-from visualization import plot_alpha_beta_map
+from visualization import plot_alpha_beta_map, plot_market_regimes
 
 # ====================
 # Page configuration
@@ -250,6 +251,82 @@ def initialize_session_state():
         st.session_state.mdm = MarketDataManager()
         st.session_state.abc = AlphaBetaCalculator(st.session_state.mdm)
         st.session_state.initialized = False
+        st.session_state.last_refresh_time = None
+        st.session_state.auto_refresh = "Off"
+
+def check_auto_refresh(days_to_fetch, hours_to_analyze):
+    """Check if auto-refresh is needed and perform refresh if necessary"""
+    current_time = datetime.now()
+    
+    # Get the selected refresh interval
+    refresh_interval = st.session_state.auto_refresh
+    
+    if refresh_interval == "Off" or not st.session_state.initialized:
+        return
+    
+    # Convert interval to minutes
+    interval_minutes = {
+        "5m": 5,
+        "15m": 15,
+        "30m": 30
+    }.get(refresh_interval)
+    
+    if not interval_minutes:
+        return
+    
+    # Check if enough time has passed since last refresh
+    if (st.session_state.last_refresh_time and 
+        current_time - st.session_state.last_refresh_time >= timedelta(minutes=interval_minutes)):
+        
+        with st.spinner(f"🔄 Auto-refreshing data ({refresh_interval} interval)..."):
+            try:
+                # Update market data
+                data = st.session_state.mdm.update_market_data(
+                    interval='5m',
+                    min_days=days_to_fetch
+                )
+                
+                if data is not None:
+                    # Recalculate metrics
+                    rolling_window = 12 * hours_to_analyze
+                    
+                    # Calculate BTC metrics
+                    betas, alphas = st.session_state.abc.calculate_rolling_alpha_beta(
+                        window=rolling_window,
+                        interval='5m',
+                        min_days=days_to_fetch
+                    )
+                    
+                    # Calculate BTCDOM metrics
+                    betas_dom, alphas_dom = st.session_state.abc.calculate_rolling_alpha_beta_btcdom(
+                        window=rolling_window,
+                        interval='5m',
+                        min_days=days_to_fetch
+                    )
+                    
+                    # Calculate performance metrics
+                    metrics = st.session_state.abc.calculate_performance_metrics(
+                        window=rolling_window,
+                        interval='5m',
+                        min_days=days_to_fetch
+                    )
+                    
+                    # Update session state
+                    st.session_state.last_betas = betas
+                    st.session_state.last_alphas = alphas
+                    st.session_state.last_betas_dom = betas_dom
+                    st.session_state.last_alphas_dom = alphas_dom
+                    st.session_state.last_metrics = metrics
+                    st.session_state.last_update = current_time
+                    st.session_state.show_plots = True
+                    
+                    # Update last refresh time
+                    st.session_state.last_refresh_time = current_time
+                    
+                    st.success(f"✅ Auto-refresh completed at {current_time.strftime('%H:%M:%S')}")
+                    
+            except Exception as e:
+                st.error(f"❌ Auto-refresh failed: {str(e)}")
 
 # ====================
 # Sidebar
@@ -275,12 +352,19 @@ def render_sidebar():
                     help="Days of historical data to load"
                 )
             with col2:
-                update_freq = st.selectbox(
+                # Store the selected refresh interval in session state
+                st.session_state.auto_refresh = st.selectbox(
                     "Auto-Refresh",
                     ["Off", "5m", "15m", "30m"],
-                    index=1,
+                    index=0,
                     help="Automatic data refresh interval"
                 )
+                
+                # Show next refresh time if auto-refresh is enabled
+                if st.session_state.auto_refresh != "Off" and st.session_state.last_refresh_time:
+                    interval_minutes = int(st.session_state.auto_refresh[:-1])
+                    next_refresh = st.session_state.last_refresh_time + timedelta(minutes=interval_minutes)
+                    st.caption(f"Next refresh at: {next_refresh.strftime('%H:%M:%S')}")
         
         # Analysis Parameters
         with st.expander("📈 Analysis Settings", expanded=True):
@@ -473,7 +557,7 @@ def render_btc_beta_tab(hours_to_analyze):
             f"{pct_neg:.1f}%"
         )
         
-        # 2) (Optional) If you still want the “relative to BTCDOM” metric, keep it:
+        # 2) (Optional) If you still want the "relative to BTCDOM" metric, keep it:
         if (hasattr(st.session_state, 'last_alphas_dom') 
             and hasattr(st.session_state, 'last_betas_dom')):
             from_below, total_pairs, perc_below = calculate_alts_relative_to_btcdom(
@@ -517,8 +601,6 @@ def render_btcdom_beta_tab(hours_to_analyze):
             f"{negative_pairs}/{total_pairs}",
             f"{percentage_below:.1f}%"
         )
-
-
 
 def render_performance_metrics_tab():
     """Enhanced performance metrics tab with sub-tabs for top performers & full metrics."""
@@ -582,8 +664,51 @@ def render_performance_metrics_tab():
         st.dataframe(detailed_df.style.background_gradient(cmap='RdYlGn', axis=0), height=400)
 
     with tab3:
-        st.markdown("#### 🔎 Detailed Analysis")
-        st.warning("Advanced analytical features coming in next release")
+        render_deep_analysis_tab()
+
+def render_deep_analysis_tab():
+    """Enhanced deep analysis with multi-timeframe support"""
+    st.markdown("#### 🔍 Multi-Timeframe Regime Analysis")
+    
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        symbol = st.selectbox("Select Asset", st.session_state.mdm.get_cached_symbols())
+    with col2:
+        timeframe = st.selectbox("Timeframe", ['5m', '15m', '1H', '4H', '1D'], index=2)
+    with col3:
+        max_lookback = 1008 if timeframe == '1D' else 2016  # Adjust based on timeframe
+        lookback = st.slider("Lookback Period", 168, max_lookback, 504,
+                           help="Number of periods to analyze")
+        
+    if st.button("Run Multi-Timeframe Analysis"):
+        with st.spinner("Analyzing market regimes..."):
+            regime_data = st.session_state.abc.detect_market_regimes(symbol, lookback, timeframe)
+            
+            if regime_data is not None:
+                st.markdown("### Market Regime Analysis Results")
+                
+                # Plot the results
+                fig = plot_market_regimes(regime_data)
+                if fig:
+                    st.pyplot(fig)
+                    plt.close(fig)
+                
+                # Show regime statistics
+                st.markdown("### Regime Statistics")
+                regime_stats = regime_data['regime_label'].value_counts()
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.metric("Most Common Regime", 
+                             regime_stats.index[0],
+                             f"{regime_stats.iloc[0]/len(regime_data)*100:.1f}% of time")
+                
+                with col2:
+                    st.metric("Current Regime",
+                             regime_data['regime_label'].iloc[-1],
+                             f"Last {timeframe} periods")
+            else:
+                st.error("Failed to analyze market regimes. Please try again.")
 
 def render_tabs(hours_to_analyze):
     """Render the three main tabs for BTC Beta, BTCDOM Beta, and Performance Metrics."""
@@ -602,24 +727,6 @@ def render_tabs(hours_to_analyze):
 # Main Application
 # ====================
 
-# def main():
-#     st.title("Crypto Alpha-Beta Map")
-#     st.markdown("_Real-time cryptocurrency analytics dashboard_")
-#     initialize_session_state()
-
-#     days_to_fetch, hours_to_analyze = render_sidebar()
-    
-#     # Reduce first column to 40% width, second to 60% => ratio 2:3
-#     col1, col2 = st.columns([2, 3], gap="large")
-#     with col1:
-#         render_main_controls(days_to_fetch, hours_to_analyze)
-#     with col2:
-#         st.markdown("## 📍 Live Dashboard")
-#         render_status_metrics(hours_to_analyze, days_to_fetch)
-        
-#         if hasattr(st.session_state, 'show_plots') and st.session_state.show_plots:
-#             render_tabs(hours_to_analyze)
-
 def main():
     st.title("Crypto Market Analytics Dashboard")
     st.markdown("_Real-time cryptocurrency analytics dashboard_")
@@ -629,6 +736,9 @@ def main():
 
     # Render sidebar to get user input
     days_to_fetch, hours_to_analyze = render_sidebar()
+    
+    # Check and perform auto-refresh if needed
+    check_auto_refresh(days_to_fetch, hours_to_analyze)
 
     # Two-column layout
     col1, col2 = st.columns([1, 3], gap="small")

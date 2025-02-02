@@ -1,152 +1,145 @@
 # Crypto Analytics Dashboard
 
-![Image](https://github.com/user-attachments/assets/b3e77ec0-ec57-4114-b893-3d5bbd61b714)
+![Dashboard Screenshot](https://github.com/user-attachments/assets/b3e77ec0-ec57-4114-b893-3d5bbd61b714)
 
-**Crypto Analytics Dashboard** is a Streamlit application that provides real-time analysis of cryptocurrency markets using **alpha-beta** calculations against benchmarks like **BTC** and **BTCDOM**. It includes rolling alpha-beta distributions, performance metrics (Sharpe, Sortino, etc.), and dynamic visualizations to help traders or analysts better understand the relative performance and risk characteristics of various crypto assets.
+**Crypto Analytics Dashboard** is a Streamlit application that provides real-time analysis of cryptocurrency markets using **alpha-beta** calculations and advanced market regime detection. It combines traditional financial metrics with machine learning models to deliver unique crypto market insights.
 
 ## Table of Contents
 
-- [Features](#features)
-- [Demo](#demo)
+- [Key Features](#key-features)
+- [Live Demo](#live-demo)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Advanced Features](#advanced-features)
 - [Project Structure](#project-structure)
-- [Configuration](#configuration)
-- [Contributing](#contributing)
+- [Troubleshooting](#troubleshooting)
 - [License](#license)
 
 ---
 
-## Features
+## Key Features
 
-1. **Rolling Alpha-Beta Calculation**  
-- **Benchmark Comparison**: Compare asset returns against both **BTC** and **BTCDOM** (BTC Dominance) to quickly gauge altcoins’ relative performance.  
-- **Time-Varying Trends**: Visualize how alpha and beta evolve over the specified window, helping identify potential outperformers during bullish phases.  
-- **Market Health Indicator**: Track the proportion of altcoins with negative alpha to assess near-term market conditions.  
-  - Historically, if **fewer than 20%** of altcoins have negative alpha, there is approximately an **80%** chance the broader altcoin market stays strong over the next **6–12 hours**.  
-  - Conversely, if **over 60%** of altcoins exhibit negative alpha, there is an **80%** likelihood of a short-term market downturn.
+### 1. Market Regime Analysis 🔄
+- **Multi-Timeframe Detection**: Identify bull/bear/high-volatility regimes across 5m, 15m, 1H, 4H, and 1D timeframes
+- **Hidden Markov Models**: Machine learning-powered regime classification
+- **Volatility Clustering**: Visualize volatility patterns and regime durations
+- **Real-time Probability Estimates**: Bayesian change point detection
 
-2. **Performance Metrics**  
-   - Calculates Sharpe ratio, Sortino ratio, max drawdown, rolling returns, and volatility for each asset.  
-   - Dynamically highlights top-performing assets based on user-defined time windows.
+### 2. Alpha-Beta Matrix 📊
+- **Dual Benchmarking**: Compare against BTC and BTCDOM simultaneously
+- **Rolling Window Analysis**: 6h/12h/24h performance windows
+- **Crowding Risk Alerts**: Detect position clustering in alpha-beta space
 
-3. **Interactive Visualizations**  
-   - Charts using Matplotlib and Seaborn, integrated within Streamlit.  
-   - Distribution plots of alpha-beta across different assets, annotated with asset labels.  
-   - Customizable color gradients and tooltips for clarity.
+### 3. Performance Diagnostics 💹
+- Advanced metrics (Sharpe/Sortino ratios)
+- Drawdown heatmaps
+- Return/volatility percentiles
+- Cross-asset correlation matrices
 
-4. **Live Updates & Caching**  
-   - Caching mechanism to speed up data retrieval from the Binance Futures API.  
-   - One-click button to fetch fresh data or re-run calculations.
-
-5. **User-Friendly UI**  
-   - Intuitive sidebar controls for configuring date range, rolling window size, and advanced settings.  
-   - Enhanced styling using custom CSS for a polished look (dark theme, gradient tabs, hover effects).
-
+### 4. Smart Visualization 🎨
+- Interactive 3D regime probability surfaces
+- Institutional-grade chart styling
+- Mobile-optimized views
+- Dark/light mode support
 
 ---
 
 ## Installation
 
-1. **Clone the repository**:
+```bash
+# Clone repository
+git clone https://github.com/yourusername/crypto-analytics-dashboard.git
+cd crypto-analytics-dashboard
 
-   ```bash
-   git clone https://github.com/YourUsername/your-repo-name.git
-   cd your-repo-name
-   ```
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/Mac
+.\.venv\Scripts\activate    # Windows
 
-2. **Create a virtual environment (recommended)**:
+# Install dependencies
+pip install -r requirements.txt
+```
 
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/macOS
-   # or
-   venv\Scripts\activate     # Windows
-   ```
-
-3. **Install dependencies**:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-   Make sure your `requirements.txt` includes packages like `streamlit`, `pandas`, `matplotlib`, `seaborn`, `scikit-learn`, and `python-binance` (or whichever libraries are used in `data_loader.py`).
-
-4. **Add Binance credentials**:
-
-   - Create or update `config.json` in the project root:
-     ```json
-     {
-       "binance": {
-         "api_key": "YOUR_BINANCE_API_KEY",
-         "api_secret": "YOUR_BINANCE_API_SECRET"
-       }
-     }
-     ```
-   - If you do not have API keys, some features may be limited.
+**Required Packages**:
+```text
+streamlit==1.29.0
+hmmlearn==0.3.0
+ta==0.11.0
+python-binance==1.0.19
+```
 
 ---
 
 ## Usage
 
-1. **Run Streamlit**:
-   ```bash
-   streamlit run app.py
-   ```
-   By default, Streamlit will open a new tab at `http://localhost:8501` in your browser.
+### Basic Operation
+```bash
+streamlit run app.py
+```
 
-2. **Navigate the UI**:
-   - **Initialize Data**: Press the “Initialize Data” button to fetch historical Binance Futures data.  
-   - **Update Data**: Fetch and merge additional data to keep everything up-to-date.  
-   - **Calculate & Visualize**: Compute rolling alpha-beta and performance metrics, then view the charts and metrics in real time.  
-   - **Tabs**: Switch between BTC Beta, BTCDOM Beta, and Performance Metrics tabs for different perspectives on the data.
+### Deep Analysis Workflow
+1. Navigate to "Deep Analysis" tab
+2. Select asset and timeframe
+3. Adjust lookback period (504 periods recommended)
+4. Interpret regime visualization:
+   - 🟢 Bull Market (Price > SMA50, Low Volatility)
+   - 🔴 Bear Market (Price < SMA50, High Volatility)
+   - 🟡 High Volatility (VIX > 30-day average)
 
-3. **Configuration**:
-   - Use the **sidebar** to adjust:
-     - The number of **days** of data to fetch.  
-     - The **analysis window** (in hours) for alpha-beta calculation.  
-   - (Optional) **Advanced Settings** expander for upcoming, more granular configurations.
+![Regime Analysis Demo](https://github.com/user-attachments/regime-demo.gif)
+
+---
+
+## Advanced Features
+
+### Custom Analysis Templates
+Create JSON configs in `analysis_templates/` to:
+- Set custom volatility thresholds
+- Define regime combinations
+- Backtest historical regimes
+
+### API Webhook Integration
+Configure in `config.json`:
+```json
+{
+  "webhooks": {
+    "telegram": "BOT_TOKEN",
+    "discord": "WEBHOOK_URL"
+  }
+}
+```
 
 ---
 
 ## Project Structure
 
-```
-├── app.py                     # Main Streamlit app
-├── data_loader.py             # Handles data fetching from Binance
-├── market_data_manager.py     # Manages caching & updates for market data
-├── alpha_beta_calculator.py   # Contains logic to compute alpha-beta, metrics
-├── visualization.py           # Plotting functions (matplotlib/seaborn)
-├── config.json                # API keys (not committed by default)
-├── requirements.txt           # Dependencies
-└── README.md                  # This file
+```bash
+├── app.py                     # Main application
+├── data_loader.py             # Binance API client
+├── market_data_manager.py     # Data pipeline & caching
+├── alpha_beta_calculator.py   # Risk metrics & ML models
+├── visualization.py           # Advanced charting
+├── config/                    # Analysis templates
+├── .venv/                     # Python environment
+└── run_app.bat                # Windows launch script
 ```
 
 ---
 
-## Configuration
+## Troubleshooting
 
-### Environment Variables / Secrets
-
-- If you prefer not to store credentials in `config.json`, you can load them via environment variables or Streamlit’s secrets management:
+**Common Issues**:
+- `hmmlearn` installation failures:
   ```bash
-  export BINANCE_API_KEY="YOUR_API_KEY"
-  export BINANCE_API_SECRET="YOUR_API_SECRET"
+  conda install -c conda-forge hmmlearn
   ```
-  And then update `data_loader.py` to read from these environment variables.
-
-### Changing Intervals or Default Parameters
-
-- The default fetching interval is **5m** candles; you can change this in `app.py` or in `MarketDataManager` as needed.  
-- The max number of days, default time windows, etc., can also be adjusted.
-
-> This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-
-### Disclaimer
-
-> This application is for **educational and informational purposes only** and is **not** financial advice. Always do your own research and consider your personal risk tolerance before making investment decisions.
+- Binance API limits: Reduce symbol count in `config.json`
+- Memory errors: Decrease lookback period
 
 ---
 
-That’s it! Happy analyzing! If you have any questions or run into issues, feel free to open an issue or contact us.
+## License
+
+MIT License - See [LICENSE](LICENSE) for full text.
+
+**Disclaimer**: This software is for research purposes only. Cryptocurrency trading carries substantial risk.
